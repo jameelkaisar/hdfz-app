@@ -1,0 +1,317 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-frontend-v1
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: frontend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: frontend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: frontend
+        version: v1
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/frontend:v1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-frontend-v2
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: frontend
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: frontend
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: frontend
+        version: v2
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/frontend:v2
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfz-frontend
+  namespace: hdfz-app
+spec:
+  type: ClusterIP
+  selector:
+    app: hdfz
+    type: frontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-backend-v1
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: backend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: backend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: backend
+        version: v1
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/backend:v1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 5000
+          protocol: TCP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-backend-v2
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: backend
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: backend
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: backend
+        version: v2
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/backend:v2
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 5000
+          protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfz-backend
+  namespace: hdfz-app
+spec:
+  type: ClusterIP
+  selector:
+    app: hdfz
+    type: backend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 5000
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: hdfz-gateway
+  namespace: hdfz-app
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - hosts:
+    - hdfz.example.com
+    port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: hdfz-credential
+  - hosts:
+    - "*"
+    port:
+      number: 80
+      name: http
+      protocol: HTTP
+    # We Can Also Upgrade HTTP Requests to HTTPS
+    # tls:
+    #   httpsRedirect: true
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hdfz-backend
+  namespace: hdfz-app
+spec:
+  host: hdfz-backend
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hdfz-frontend
+  namespace: hdfz-app
+spec:
+  host: hdfz-frontend
+  # Sticky Sessions can't be used with weighted routing
+  # See: https://github.com/istio/istio/issues/9764
+  # See: https://github.com/envoyproxy/envoy/issues/8167
+  # Workaround: https://github.com/istio/istio/issues/9764#issuecomment-1047356408
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        # We can use other parameters as well
+        # useSourceIp: true
+        # httpHeaderName: x-user
+        httpCookie:
+          name: user-session
+          ttl: 0s
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: hdfz
+  namespace: hdfz-app
+spec:
+  gateways:
+  - hdfz-gateway
+  hosts:
+  - "*"
+  http:
+  - match:
+    - uri:
+        prefix: /api
+    # We can test timeout as well
+    # timeout: 30ms
+    route:
+    - destination:
+        host: hdfz-backend
+        subset: v1
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: v1
+      weight: 70
+    - destination:
+        host: hdfz-backend
+        subset: v2
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: v2
+      weight: 30
+  - match:
+    - headers:
+        x-user:
+          exact: dev
+    route:
+    - destination:
+        host: hdfz-frontend
+        subset: v2
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: reactjs-dev
+  - route:
+    - destination:
+        host: hdfz-frontend
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: reactjs
