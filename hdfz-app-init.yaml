@@ -1,0 +1,158 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-frontend-v1
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: frontend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: frontend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: frontend
+        version: v1
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/frontend:v1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfz-frontend
+  namespace: hdfz-app
+spec:
+  type: ClusterIP
+  selector:
+    app: hdfz
+    type: frontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfz-backend-v1
+  namespace: hdfz-app
+  labels:
+    app: hdfz
+    type: backend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfz
+      type: backend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: hdfz
+        type: backend
+        version: v1
+    spec:
+      containers:
+      - name: hdfz
+        image: ghcr.io/jameelkaisar/hdfz-app/backend:v1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - containerPort: 5000
+          protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfz-backend
+  namespace: hdfz-app
+spec:
+  type: ClusterIP
+  selector:
+    app: hdfz
+    type: backend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 5000
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: hdfz-gateway
+  namespace: hdfz-app
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - hosts:
+    - "*"
+    port:
+      number: 80
+      name: http
+      protocol: HTTP
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: hdfz
+  namespace: hdfz-app
+spec:
+  gateways:
+  - hdfz-gateway
+  hosts:
+  - "*"
+  http:
+  - match:
+    - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: hdfz-backend
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: v1
+  - route:
+    - destination:
+        host: hdfz-frontend
+        port:
+          number: 80
+      headers:
+        response:
+          add:
+            version: reactjs
