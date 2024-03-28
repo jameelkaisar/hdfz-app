@@ -163,6 +163,43 @@ curl -sI -H "Host: hdfz.example.com" --resolve "hdfz.example.com:8443:127.0.0.1"
 curl -sI -H "Host: hdfz.example.com" --resolve "hdfz.example.com:8443:127.0.0.1" --cacert hdfz_certs/example.com.crt "https://hdfz.example.com:8443/api/balance" | grep -i version
 ```
 
+# Enable HTTPS Passthrough (Not Working)
+## Generate Self Signed Certificates
+```
+# Create Folder
+mkdir hdfz_certs
+
+# Create a Root Certificate
+openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -subj '/O=HDFZ Inc./CN=example.com' -keyout hdfz_certs/example.com.key -out hdfz_certs/example.com.crt
+
+# Generate Certs for hdfz.example.com
+openssl req -out hdfz_certs/hdfz.example.com.csr -newkey rsa:2048 -nodes -keyout hdfz_certs/hdfz.example.com.key -subj "/CN=hdfz.example.com/O=HDFZ Organization"
+openssl x509 -req -sha256 -days 365 -CA hdfz_certs/example.com.crt -CAkey hdfz_certs/example.com.key -set_serial 0 -in hdfz_certs/hdfz.example.com.csr -out hdfz_certs/hdfz.example.com.crt
+
+# Add Certs to Kubernetes
+kubectl create -n hdfz-app secret tls nginx-server-certs --key=hdfz_certs/hdfz.example.com.key --cert=hdfz_certs/hdfz.example.com.crt
+
+# Add Config to Kubernetes
+kubectl create -n hdfz-app configmap nginx-configmap --from-file=nginx.conf=./nginx/nginx.conf
+```
+
+## Deploy HDFZ App
+```
+kubectl apply -f hdfz-app-passthrough.yaml
+```
+
+## Access HDFZ App
+- Enable Port Forwarding
+```
+kubectl port-forward service/istio-ingressgateway 8443:443 -n istio-system
+```
+
+- Test HTTPS
+```
+curl -sI -H "Host: hdfz.example.com" --resolve "hdfz.example.com:8443:127.0.0.1" --cacert hdfz_certs/example.com.crt "https://hdfz.example.com:8443" | grep -i version
+curl -sI -H "Host: hdfz.example.com" --resolve "hdfz.example.com:8443:127.0.0.1" --cacert hdfz_certs/example.com.crt "https://hdfz.example.com:8443/api/balance" | grep -i version
+```
+
 # Observability Addons
 ## Kiali
 ### Install Kiali
