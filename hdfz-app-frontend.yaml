@@ -284,6 +284,9 @@ spec:
     - headers:
         x-user:
           exact: dev
+    - headers:
+        cookie:
+          regex: ^(.*;)?\s*(x-user=dev)\s*(;.*)?$
     route:
     - destination:
         host: hdfz-frontend

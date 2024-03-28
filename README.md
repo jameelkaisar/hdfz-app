@@ -127,6 +127,7 @@ curl -sI -H 'Cookie: user-session="ededac18288479d2";' http://localhost:8080 | g
 
 # Test Dark Deployment
 curl -sI -H "x-user: dev" http://localhost:8080 | grep -i version
+curl -sI -H "cookie: x-user=dev" http://localhost:8080 | grep -i version
 ```
 
 # Enable HTTPS
